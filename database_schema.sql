@@ -41,6 +41,10 @@ CREATE TABLE collection2item (
     item_id integer REFERENCES item(item_id)
 );
 
+CREATE TABLE item2bitstream (
+    item_id integer REFERENCES item(item_id),
+    bitstream_id integer
+);
 
 CREATE TABLE downloadspercommunity (
     community_id integer REFERENCES community(community_id),

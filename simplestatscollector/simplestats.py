@@ -157,7 +157,14 @@ class Bitstream(LeafNode):
         except AttributeError:
             return True
 
-def create_objects(cursor, new_db_format):
+def read_item2bitstream(cursor):
+    retval = {}
+    cursor.execute("SELECT item_id, bitstream_id FROM item2bitstream")
+    for item_id, bitstream_id in cursor.fetchall():
+        retval[bitstream_id] = item_id
+    return retval
+
+def create_objects(cursor, new_db_format, existing_bitstreams):
     """Checks the database to see what communities, collections, items, and
     bitstreams we have there and constructs corresponding objects (and put
     them into trees...)
@@ -243,6 +250,8 @@ def create_objects(cursor, new_db_format):
     for item_id, name in cursor.fetchall():
         items[item_id] = Item(item_id, name, h[item_id])
 
+    for bitstream_id in existing_bitstreams.keys():
+        bitstreams[bitstream_id] = Bitstream(bitstream_id)
     cursor.execute("SELECT bitstream_id FROM bitstream")
     for bitstream_id in [row[0] for row in cursor.fetchall()]:
         bitstreams[bitstream_id] = Bitstream(bitstream_id)
@@ -297,6 +306,18 @@ def create_objects(cursor, new_db_format):
         bitstream = bitstreams[bitstream_id]
         bitstream.n_bytes = size_bytes
         item.add_child(bitstream)
+
+    for bitstream_id, item_id in existing_bitstreams.items():
+        try:
+            item = items[item_id]
+        except KeyError:
+            print "(item2bundle) Bad item_id: %s" % item_id
+            continue
+
+        if bitstream_id not in [x.my_id for x in item.children]:
+            bitstream = bitstreams[bitstream_id]
+            bitstream.n_bytes = 0
+            item.add_child(bitstream)
 
     bundle_types = {}
     if new_db_format:
@@ -570,7 +591,7 @@ def update_community2community_table(cursor, community):
         else:
             pass
 
-def write_stats(cursor, communities, collections, items,
+def write_stats(cursor, communities, collections, items, bitstreams,
                 start_time, stop_time):
     """Write collected statistics to the output database. Note that we try to
     avoid removing old statistics; for example even if a community, a
@@ -617,6 +638,10 @@ def write_stats(cursor, communities, collections, items,
     print "Writing collection2item..."
     update_parent_child_table(cursor, 'collection2item', 'collection_id',
                               'item_id', items.values())
+
+    print "Writing item2bitstream..."
+    update_parent_child_table(cursor, 'item2bitstream', 'item_id',
+                              'bitstream_id', bitstreams.values())
 
     # And finally the actual download numbers:
         
@@ -683,12 +708,18 @@ statistics between April 2007 and December 2008:
     output_db = config['output_db']
     log_dir = config['log_dir']
     ip_exclude_file = config['ip_exclude_file']
+
+    print "Reading existing item/bitstream relations from the simplestats database..."
+    db = connect_to_db(output_db)
+    cursor = db.cursor()
+    existing_bitstreams = read_item2bitstream(cursor)
     
     print "Reading from the database..."
     db = connect_to_db(input_db)
     cursor = db.cursor()
     communities, collections, items, bitstreams = create_objects(cursor,
-                                                                 new_db_format)
+                                                                 new_db_format,
+                                                                 existing_bitstreams)
     db.close()
 
     print "Reading log files..."
@@ -698,7 +729,7 @@ statistics between April 2007 and December 2008:
     print "Writing to the database..."
     db = connect_to_db(output_db)
     cursor = db.cursor()
-    write_stats(cursor, communities, collections, items, start_time, stop_time)
+    write_stats(cursor, communities, collections, items, bitstreams, start_time, stop_time)
     db.commit()
     db.close()
 
