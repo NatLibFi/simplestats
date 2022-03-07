@@ -388,69 +388,67 @@ def count_downloads_from_logs(ip_exclude_file, log_dir, bitstreams,
                 print 'Skipped %s. (Too old for us!)' % filename
                 continue
         
-        f = open(filename, 'r')
+        with open(filename, 'r') as infile:
 
-        for line in f.readlines():
+            for line in infile:
 
-            try:
-                log_line = LogLine(line)
-            except ValueError:
-                continue
-
-            if start_time and log_line.get_time() < start_time:
-                continue # Skip this line.
-
-            if stop_time and log_line.get_time() > stop_time:
-                break # Skip the whole file.
-
-            # Skip log lines that have an excluded ip address. (The ip address
-            # might be a whole range of addresses expressed as, for example
-            # 204.123.9 or even 204.123 or 204 (althought two later cases
-            # won't probably happen in practice...))
-            m = pattern.search(line)
-            exclude_this_line = False
-            if m:
-                ip_parts = m.group(1).split('.')
-                for i in range(4):
-                    if '.'.join([str(x) for x in ip_parts[0:i+1]]) in \
-                           ips_to_exclude[i]:
-                        exclude_this_line = True
-                        break
-            if exclude_this_line:
-                continue # Skip this line.
-
-            if log_line.is_download_action():
                 try:
-                    bitstream_id = log_line.get_bitstream_id()
+                    log_line = LogLine(line)
                 except ValueError:
-                    print "Bad bitstream_id"
                     continue
 
-                try:
-                    bitstream = bitstreams[bitstream_id]                
-                except KeyError:
-                    continue
-                if not bitstream.is_original_bitstream():
-                    continue
+                if start_time and log_line.get_time() < start_time:
+                    continue # Skip this line.
 
+                if stop_time and log_line.get_time() > stop_time:
+                    break # Skip the whole file.
+
+                # Skip log lines that have an excluded ip address. (The ip address
+                # might be a whole range of addresses expressed as, for example
+                # 204.123.9 or even 204.123 or 204 (althought two later cases
+                # won't probably happen in practice...))
+                m = pattern.search(line)
                 exclude_this_line = False
-                if last_download.has_key(log_line.ip_addr):
-                    delta = log_line.dt - last_download[log_line.ip_addr]
-                    if delta < timedelta(seconds=1):
-                        exclude_this_line = True
-                last_download[log_line.ip_addr] = log_line.dt
+                if m:
+                    ip_parts = m.group(1).split('.')
+                    for i in range(4):
+                        if '.'.join([str(x) for x in ip_parts[0:i+1]]) in \
+                               ips_to_exclude[i]:
+                            exclude_this_line = True
+                            break
                 if exclude_this_line:
-                    continue
-                
-                log_line_time = log_line.get_time()
-                t = log_line.ip_addr, log_line_time, bitstream_id
-                if t not in downloads:
-                    # For each bitstream, we count at most one
-                    # download per ip per month.
-                    bitstreams[bitstream_id].inc_counter(log_line_time)
-                    downloads.add(t)
-            
-        f.close()
+                    continue # Skip this line.
+
+                if log_line.is_download_action():
+                    try:
+                        bitstream_id = log_line.get_bitstream_id()
+                    except ValueError:
+                        print "Bad bitstream_id"
+                        continue
+
+                    try:
+                        bitstream = bitstreams[bitstream_id]
+                    except KeyError:
+                        continue
+                    if not bitstream.is_original_bitstream():
+                        continue
+
+                    exclude_this_line = False
+                    if last_download.has_key(log_line.ip_addr):
+                        delta = log_line.dt - last_download[log_line.ip_addr]
+                        if delta < timedelta(seconds=1):
+                            exclude_this_line = True
+                    last_download[log_line.ip_addr] = log_line.dt
+                    if exclude_this_line:
+                        continue
+
+                    log_line_time = log_line.get_time()
+                    t = log_line.ip_addr, log_line_time, bitstream_id
+                    if t not in downloads:
+                        # For each bitstream, we count at most one
+                        # download per ip per month.
+                        bitstreams[bitstream_id].inc_counter(log_line_time)
+                        downloads.add(t)
 
 def generate_time_tuple(start_time, stop_time):
     time_list = []
@@ -706,5 +704,3 @@ statistics between April 2007 and December 2008:
 
 if __name__ == '__main__':
     sys.exit(main())
-
-        
