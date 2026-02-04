@@ -4,7 +4,7 @@ import java.util.*;
 
 public class Collection extends Node{
 
-    public Collection(int collection_id, String collection_name,
+    public Collection(UUID collection_id, String collection_name,
 		      String collection_handle,
 		      int n_items, int n_bitstreams, long n_bytes) {
 	super(collection_id, collection_name, collection_handle,

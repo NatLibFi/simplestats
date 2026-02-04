@@ -1,5 +1,5 @@
 CREATE TABLE community (
-    community_id integer PRIMARY KEY,
+    community_id uuid PRIMARY KEY,
     name text,
     handle character varying(256),
     n_items integer,
@@ -8,7 +8,7 @@ CREATE TABLE community (
 );
 
 CREATE TABLE collection (
-    collection_id integer PRIMARY KEY,
+    collection_id uuid PRIMARY KEY,
     name text,
     handle character varying(256),
     n_items integer,
@@ -17,7 +17,7 @@ CREATE TABLE collection (
 );
 
 CREATE TABLE item (
-    item_id integer PRIMARY KEY,
+    item_id uuid PRIMARY KEY,
     name text,
     handle character varying(256),
     n_items integer,
@@ -25,51 +25,50 @@ CREATE TABLE item (
     n_bytes bigint
 );
 
-
 CREATE TABLE community2community (
-    parent_comm_id integer REFERENCES community(community_id),
-    child_comm_id integer REFERENCES community(community_id)
+    parent_comm_id uuid REFERENCES community(community_id),
+    child_comm_id uuid REFERENCES community(community_id)
 );
 
 CREATE TABLE community2collection (
-    community_id integer REFERENCES community(community_id),
-    collection_id integer REFERENCES collection(collection_id)
+    community_id uuid REFERENCES community(community_id),
+    collection_id uuid REFERENCES collection(collection_id)
 );
 
 CREATE TABLE collection2item (
-    collection_id integer REFERENCES collection(collection_id),
-    item_id integer REFERENCES item(item_id)
+    collection_id uuid REFERENCES collection(collection_id),
+    item_id uuid REFERENCES item(item_id)
 );
 
 CREATE TABLE item2bitstream (
-    item_id integer REFERENCES item(item_id),
-    bitstream_id integer
+    item_id uuid REFERENCES item(item_id),
+    bitstream_id uuid
 );
 
 CREATE TABLE downloadspercommunity (
-    community_id integer REFERENCES community(community_id),
+    community_id uuid REFERENCES community(community_id),
     "time" integer NOT NULL,
     count integer DEFAULT 0 NOT NULL,
     PRIMARY KEY(community_id, "time")
 );
 
 CREATE TABLE downloadspercollection (
-    collection_id integer REFERENCES collection(collection_id),
+    collection_id uuid REFERENCES collection(collection_id),
     "time" integer NOT NULL,
     count integer DEFAULT 0 NOT NULL,
     PRIMARY KEY(collection_id, "time")
 );
 
+
 CREATE TABLE downloadsperitem (
-    item_id integer REFERENCES item(item_id),
+    item_id uuid REFERENCES item(item_id),
     "time" integer NOT NULL,
     count integer DEFAULT 0 NOT NULL,
     PRIMARY KEY(item_id, "time")
 );
 
--- This *might* make things faster.
-CREATE INDEX downloadsperitem_count_idx ON downloadsperitem (count);
+CREATE INDEX downloadsperitem_count_idx ON downloadsperitem USING btree (count);
 
-CREATE index item_handle_idx ON item (handle);
-CREATE index collection_handle_idx ON collection (handle);
-CREATE index community_handle_idx ON community (handle);
+CREATE INDEX item_handle_idx ON item USING btree (handle);
+CREATE INDEX collection_handle_idx ON collection USING btree (handle);
+CREATE INDEX community_handle_idx ON community USING btree (handle);

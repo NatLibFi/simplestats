@@ -1,6 +1,6 @@
 package fi.helsinki.lib.simplestatsreporter;
 
-import javax.servlet.http.HttpServlet;
+import jakarta.servlet.http.HttpServlet;
 import java.util.ArrayList;
 
 public abstract class GetItemsHttpServlet extends HttpServlet {

@@ -4,8 +4,8 @@ import java.lang.System;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.*;
 import java.io.*;
-import javax.servlet.*;
-import javax.servlet.http.*;
+import jakarta.servlet.*;
+import jakarta.servlet.http.*;
 import java.sql.*;
 import org.json.simple.JSONObject;
 import org.json.simple.JSONArray;
@@ -192,16 +192,17 @@ public class JSON extends GetItemsHttpServlet {
 	throws UnknownHandleException, SQLException {
 
 	Hashtable<String, Integer> stats = null;
-	int itemId = -1;
-	int collectionId = -1;
-	int communityId = -1;
+	UUID zero = new UUID(0,0);
+	UUID itemId = zero;
+	UUID collectionId = zero;
+	UUID communityId = zero;
 
 	if (handle.equals("0")) {
 	    /* A special case: the whole DSpace does not have a handle, but
 	       in the database we represent the whole DSpace as a community (
-	       with id 0). */
-	    stats = DBReader.statsForCommunity(stmt, 0);
-	    communityId = 0;
+	       with "zero" UUID). */
+	    stats = DBReader.statsForCommunity(stmt, zero);
+	    communityId = zero;
 	}
 	else {
 	    /* A normal case: we have a handle but we don't know if that
@@ -210,18 +211,18 @@ public class JSON extends GetItemsHttpServlet {
 
 	    itemId = DBReader.handleToItemId(stmt, handle);
        
-	    if (itemId != -1) {
+	    if (itemId != zero) {
 		stats = DBReader.statsForItem(stmt, itemId);
 	    }
 	    else {
 		collectionId = DBReader.handleToCollectionId(stmt, handle);
-		if (collectionId != -1) {
+		if (collectionId != zero) {
 		    stats = DBReader.statsForCollection(stmt, collectionId);
 		}
 		else {
 		    communityId = DBReader.handleToCommunityId(stmt,
 								   handle);
-		    if (communityId != -1) {
+		    if (communityId != zero) {
 			stats = DBReader.statsForCommunity(stmt, communityId);
 		    }
 		    else {
@@ -238,9 +239,9 @@ public class JSON extends GetItemsHttpServlet {
 
 	Node node;
 	if (top > 0) {
-	    Hashtable<Integer, Community> communities = DBReader.readCommunities(stmt);
-	    Hashtable<Integer, Collection> collections = DBReader.readCollections(stmt);
-	    Hashtable<Integer, Item> items = DBReader.readItems(stmt);
+	    Hashtable<UUID, Community> communities = DBReader.readCommunities(stmt);
+	    Hashtable<UUID, Collection> collections = DBReader.readCollections(stmt);
+	    Hashtable<UUID, Item> items = DBReader.readItems(stmt);
 
 	    DBReader.readCommunitiesStats(stmt, communities, startTime, stopTime);
 	    DBReader.readCollectionsStats(stmt, collections, startTime, stopTime);
@@ -248,10 +249,10 @@ public class JSON extends GetItemsHttpServlet {
 
 	    DBReader.setRelations(stmt, communities, collections, items);
 
-	    if (itemId != -1) {
+	    if (itemId != zero) {
 		node = items.get(itemId);
 	    }
-	    else if (collectionId != -1) {
+	    else if (collectionId != zero) {
 		node = collections.get(collectionId);
 	    }
 	    else {

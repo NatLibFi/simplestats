@@ -3,8 +3,8 @@ package fi.helsinki.lib.simplestatsreporter;
 import java.util.*;
 import java.io.*;
 import java.text.*;
-import javax.servlet.*;
-import javax.servlet.http.*;
+import jakarta.servlet.*;
+import jakarta.servlet.http.*;
 import java.sql.*;
 
 public abstract class SimpleStatsReporter extends GetItemsHttpServlet {

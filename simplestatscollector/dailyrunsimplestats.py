@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 # Edit a crontab file so that this script is run once each day.
 
@@ -10,7 +10,7 @@
 import sys
 import datetime
 
-import simplestats
+import simplestats2
 
 def main(argv=None):
 
@@ -34,7 +34,7 @@ def main(argv=None):
     start_time = str(start_year) + ('%2d' % start_month).replace(' ', '0')
     stop_time = str(stop_year) + ('%2d' % stop_month).replace(' ', '0')
         
-    simplestats.main(['', '--new', start_time, stop_time])
+    simplestats2.main(['', start_time, stop_time])
 
 
 if __name__ == '__main__':

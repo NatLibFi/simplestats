@@ -3,8 +3,8 @@ package fi.helsinki.lib.simplestatsreporter;
 import java.util.*;
 import java.io.*;
 import java.text.*;
-import javax.servlet.*;
-import javax.servlet.http.*;
+import jakarta.servlet.*;
+import jakarta.servlet.http.*;
 import java.sql.*;
 
 public class DBReader {
@@ -25,17 +25,16 @@ public class DBReader {
 	return retVal;
     }
 
-    public static Hashtable<Integer, Community> readCommunities(Statement stmt)
+    public static Hashtable<UUID, Community> readCommunities(Statement stmt)
 	throws SQLException {
 
-	Hashtable<Integer, Community> communities = new
-	    Hashtable<Integer, Community>();
+	Hashtable<UUID, Community> communities = new Hashtable<UUID, Community>();
 	ResultSet rs;
 
 	rs = stmt.executeQuery("SELECT * FROM community");
 	
 	while (rs.next()) {
-	    int id = rs.getInt("community_id");
+	    UUID id = UUID.fromString(rs.getString("community_id"));
 	    String name = rs.getString("name");
 	    String handle = rs.getString("handle");
 	    int n_items = rs.getInt("n_items");
@@ -47,7 +46,7 @@ public class DBReader {
 	return communities;
     }
 
-    public static void communitiesToTrees(Hashtable<Integer, Community>
+    public static void communitiesToTrees(Hashtable<UUID, Community>
 					  communities, Statement stmt)
 	throws SQLException {
 
@@ -56,25 +55,23 @@ public class DBReader {
 	while (rs.next()) {
 	    Community parent, child;
 
-	    parent = communities.get(rs.getInt("parent_comm_id"));
-	    child = communities.get(rs.getInt("child_comm_id"));
+	    parent = communities.get(UUID.fromString(rs.getString("parent_comm_id")));
+	    child = communities.get(UUID.fromString(rs.getString("child_comm_id")));
 	    
 	    parent.addChild(child);
 	}
     }
 
-    public static Hashtable<Integer, Collection>
-	readCollections(Statement stmt)
+    public static Hashtable<UUID, Collection> readCollections(Statement stmt)
 	throws SQLException {
 
-	Hashtable<Integer, Collection> collections = new
-	    Hashtable<Integer, Collection>();
+	Hashtable<UUID, Collection> collections = new Hashtable<UUID, Collection>();
 	ResultSet rs;
 
 	rs = stmt.executeQuery("SELECT * FROM collection");
 	
 	while (rs.next()) {
-	    int id = rs.getInt("collection_id");
+	    UUID id = UUID.fromString(rs.getString("collection_id"));
 	    String name = rs.getString("name");
 	    String handle = rs.getString("handle");
 	    int n_items = rs.getInt("n_items");
@@ -86,16 +83,16 @@ public class DBReader {
 	return collections;
     }
 
-    public static Hashtable<Integer, Item> readItems(Statement stmt)
+    public static Hashtable<UUID, Item> readItems(Statement stmt)
 	throws SQLException {
 
-	Hashtable<Integer, Item> items = new Hashtable<Integer, Item>();
+	Hashtable<UUID, Item> items = new Hashtable<UUID, Item>();
 	ResultSet rs;
 
 	rs = stmt.executeQuery("SELECT * FROM item");
 	
 	while (rs.next()) {
-	    int id = rs.getInt("item_id");
+	    UUID id = UUID.fromString(rs.getString("item_id"));
 	    String name = rs.getString("name");
 	    String handle = rs.getString("handle");
 	    int n_items = rs.getInt("n_items");
@@ -117,8 +114,8 @@ public class DBReader {
 	while (rs.next()) {
 	    Community parent, child;
 
-	    parent = (Community)communities.get(rs.getInt("parent_comm_id"));
-	    child = (Community)communities.get(rs.getInt("child_comm_id"));
+	    parent = (Community)communities.get(UUID.fromString(rs.getString("parent_comm_id")));
+	    child = (Community)communities.get(UUID.fromString(rs.getString("child_comm_id")));
 	    
 	    parent.addChild(child);
 	}
@@ -128,9 +125,8 @@ public class DBReader {
 	    Community community;
 	    Collection collection;
 
-	    community =	(Community)communities.get(rs.getInt("community_id"));
-	    collection =
-		(Collection)collections.get(rs.getInt("collection_id"));
+	    community =	(Community)communities.get(UUID.fromString(rs.getString("community_id")));
+	    collection = (Collection)collections.get(UUID.fromString(rs.getString("collection_id")));
 	    
 	    community.addChild(collection);
 	}
@@ -140,10 +136,8 @@ public class DBReader {
 	    Collection collection;
 	    Item item;
 
-	    collection = 
-		(Collection)collections.get(rs.getInt("collection_id"));
-	    item =
-		(Item)items.get(rs.getInt("item_id"));
+	    collection = (Collection)collections.get(UUID.fromString(rs.getString("collection_id")));
+	    item = (Item)items.get(UUID.fromString(rs.getString("item_id")));
 	    
 	    collection.addChild(item);
 	}
@@ -171,7 +165,7 @@ public class DBReader {
 	while (rs.next()) {
 	    int time = rs.getInt("time");
 	    int count = rs.getInt("count");
-	    int community_id = rs.getInt("community_id");
+	    UUID community_id = UUID.fromString(rs.getString("community_id"));
 	    ((Community)communities.get(community_id)).setCounter(time, count);
 	}
     }
@@ -191,7 +185,7 @@ public class DBReader {
 	while (rs.next()) {
 	    int time = rs.getInt("time");
 	    int count = rs.getInt("count");
-	    int collection_id = rs.getInt("collection_id");
+	    UUID collection_id = UUID.fromString(rs.getString("collection_id"));
 	    ((Collection)collection.get(collection_id)).setCounter(time,
 								   count);
 	}
@@ -211,7 +205,7 @@ public class DBReader {
 	while (rs.next()) {
 	    int time = rs.getInt("time");
 	    int count = rs.getInt("count");
-	    int item_id = rs.getInt("item_id");
+	    UUID item_id = UUID.fromString(rs.getString("item_id"));
 	    try {
 		((Item)item.get(item_id)).setCounter(time, count);
 	    }
@@ -224,7 +218,7 @@ public class DBReader {
 
     public static void readItemsStatsForCollection(Statement stmt,
 						   Hashtable items,
-						   int collection_id,
+						   UUID collection_id,
 						   int startTime, int stopTime)
 	throws SQLException {
 
@@ -235,14 +229,14 @@ public class DBReader {
 	    "count > 0 AND \"time\" >= " + startTime +
 	    " AND \"time\" <= " + stopTime +
 	    " AND item_id IN " +
-	    "(SELECT item_id FROM collection2item WHERE collection_id = " +
-	    collection_id + ")";
+	    "(SELECT item_id FROM collection2item WHERE collection_id = '" +
+	    collection_id.toString() + "')";
 
 	rs = stmt.executeQuery(q);
 	while (rs.next()) {
 	    int time = rs.getInt("time");
 	    int count = rs.getInt("count");
-	    int item_id = rs.getInt("item_id");
+	    UUID item_id = UUID.fromString(rs.getString("item_id"));
 	    ((Item)items.get(item_id)).setCounter(time, count);
 	}
     }
@@ -252,57 +246,53 @@ public class DBReader {
        because they don't check it.... so if that string contains something
        like DROP say goodbye to your data!  */
 
-    public static int handleToItemId(Statement stmt, String handle)
+    public static UUID handleToItemId(Statement stmt, String handle)
 	throws SQLException {
 	return handleToId(stmt, handle, "item");
     }
 
-    public static int handleToCollectionId(Statement stmt, String handle)
+    public static UUID handleToCollectionId(Statement stmt, String handle)
 	throws SQLException {
 	return handleToId(stmt, handle, "collection");
     }
 
-    public static int handleToCommunityId(Statement stmt, String handle)
+    public static UUID handleToCommunityId(Statement stmt, String handle)
 	throws SQLException {
 	return handleToId(stmt, handle, "community");
     }
 
-    private static int handleToId(Statement stmt, String handle, String ob)
+    private static UUID handleToId(Statement stmt, String handle, String ob)
 	throws SQLException {
 	ResultSet rs;
 	String q = "SELECT * FROM " + ob + " WHERE handle = '" + handle + "'";
 	
 	rs = stmt.executeQuery(q);
-	return (rs.next() ? rs.getInt(ob + "_id") : -1);
+	return (rs.next() ? UUID.fromString(rs.getString(ob + "_id")) : new UUID(0,0));
     }
 
-    public static Hashtable<String, Integer> statsForItem(Statement stmt,
-							  int itemId)
+    public static Hashtable<String, Integer> statsForItem(Statement stmt, UUID itemId)
 	throws SQLException {
 	return statsFor(stmt, itemId, "item");
     }
 
-    public static Hashtable<String, Integer>
-	statsForCollection(Statement stmt, int collectionId)
+    public static Hashtable<String, Integer> statsForCollection(Statement stmt, UUID collectionId)
 	throws SQLException {
 	return statsFor(stmt, collectionId, "collection");
     }
 
-    public static Hashtable<String, Integer>
-	statsForCommunity(Statement stmt, int communityId)
+    public static Hashtable<String, Integer> statsForCommunity(Statement stmt, UUID communityId)
 	throws SQLException {
 	return statsFor(stmt, communityId, "community");
     }
 
-    private static Hashtable<String, Integer> statsFor(Statement stmt,
-						       int obId, String ob)
+    private static Hashtable<String, Integer> statsFor(Statement stmt, UUID obId, String ob)
 	throws SQLException {
 	Hashtable<String, Integer> stats = new Hashtable<String, Integer>();
 	int sum = 0;
 	ResultSet rs;
 	String q = ("SELECT * FROM " + 
 		    "downloadsper" + ob + " WHERE " +
-		    ob + "_id = " + Integer.toString(obId));
+		    ob + "_id = " + obId.toString());
 	
 	rs = stmt.executeQuery(q);
 	while (rs.next()) {

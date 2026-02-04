@@ -11,7 +11,7 @@ public class Node {
         }
     };
 
-    private int id;
+    private UUID id;
     private String name;
     private String handle;
     private int n_items;
@@ -21,7 +21,7 @@ public class Node {
     private ArrayList<Node> children;
     private Hashtable<Integer, Integer> counter;
 
-    public Node(int node_id, String node_name, String node_handle,
+    public Node(UUID node_id, String node_name, String node_handle,
 		int node_n_items, int node_n_bitstreams, long node_n_bytes) {
 	id = node_id;
 	name = node_name;
@@ -34,7 +34,7 @@ public class Node {
 	counter = new Hashtable<Integer, Integer>();
     }
 
-    public int getId() {
+    public UUID getId() {
 	return id;
     }
 

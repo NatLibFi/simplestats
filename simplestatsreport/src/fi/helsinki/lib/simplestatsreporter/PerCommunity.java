@@ -3,8 +3,8 @@ package fi.helsinki.lib.simplestatsreporter;
 import java.util.*;
 import java.io.*;
 import java.text.*;
-import javax.servlet.*;
-import javax.servlet.http.*;
+import jakarta.servlet.*;
+import jakarta.servlet.http.*;
 import java.sql.*;
 import java.util.ArrayList;
 
@@ -66,7 +66,7 @@ public class PerCommunity extends SimpleStatsReporter {
     }
 
     private void findAllItemsFor(Node node, ArrayList<Node> allItems,
-                                 ArrayList<Integer> collectionIDs) {
+                                 ArrayList<UUID> collectionIDs) {
         ArrayList<Node> children = node.getChildren();
         for (Node thisNode : children) {
             if (thisNode instanceof Community) {
@@ -82,24 +82,22 @@ public class PerCommunity extends SimpleStatsReporter {
     public String htmlContent(Statement stmt, HttpServletRequest request)
 	throws SQLException {
 
-	int communityId = Integer.parseInt(request.getParameter("id"));
+	UUID communityId = UUID.fromString(request.getParameter("id"));
 	int startTime =
 	    Integer.parseInt(request.getParameter("start_time"));
 	int stopTime =
 	    Integer.parseInt(request.getParameter("stop_time"));
 
-	Hashtable<Integer, Community> communities =
-	    DBReader.readCommunities(stmt);
-	Hashtable<Integer, Collection> collections =
-	    DBReader.readCollections(stmt);
-	Hashtable<Integer, Item> items = DBReader.readItems(stmt);
+	Hashtable<UUID, Community> communities = DBReader.readCommunities(stmt);
+	Hashtable<UUID, Collection> collections = DBReader.readCollections(stmt);
+	Hashtable<UUID, Item> items = DBReader.readItems(stmt);
 
 	DBReader.setRelations(stmt, communities, collections, items);
 
-        ArrayList<Integer> collectionIDs = new ArrayList<Integer>();
+        ArrayList<UUID> collectionIDs = new ArrayList<UUID>();
         ArrayList<Node> allItems = new ArrayList<Node>();
         findAllItemsFor(communities.get(communityId), allItems, collectionIDs);
-        for (int thisCollectionID : collectionIDs) {
+        for (UUID thisCollectionID : collectionIDs) {
             DBReader.readItemsStatsForCollection(stmt, items, thisCollectionID,
                                                  startTime, stopTime);
         }

@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 # This is a script that reads DSpace database and log files, and then
 # writes download statistics to another database.
@@ -20,55 +20,43 @@
 #  - I have not tested how well this behaves if things are moved or deleted
 #    in the DSpace database, see write_stats() below for more info.
 
-import pgdb
+import psycopg2
 import glob
 import os
 import sys
 import re
-import types
+from ipaddress import ip_address, ip_network
 from datetime import date, datetime, timedelta
 from stat import ST_MTIME
-try:
-    frozenset
-except NameError:
-    # For Python versions < 2.6
-    from sets import Set as set
-    from sets import ImmutableSet as frozenset
 
-from simplestats_config import config # Our configuration information.
+from simplestats2_config import config # Our configuration information.
 
 class LogLine:
     def __init__(self, line):
+        m = re.match(r'(.*?) .*?\[(..)/(...)/(....):(..):(..):(..).*?\] "(GET /bitstreams/.{36}/download|GET /server/api/core/bitstreams/.{36}/content)', line)
 
-        m = re.match('(....)-(..)-(..) (..):(..):(..),(...) (\S*)  (\S*) @ (.*)', line)
         if m:
-            year, month, day, hour, minute, second, millisecond, level, klass, rest = m.groups()
+            ip_addr, day, month, year, hour, minute, second, rest = m.groups()
+            bitstream_id = re.match(r'.*/bitstreams/(.{36})/.*', rest).groups()[0]
+            month = {'Jan': 1, 'Feb': 2, 'Mar': 3, 'Apr': 4,
+                     'May': 5, 'Jun': 6, 'Jul': 7, 'Aug': 8,
+                     'Sep': 9, 'Oct': 10,'Nov': 11,'Dec': 12}[month]
             try:
-                dt = datetime(int(year), int(month), int(day), int(hour),
-                              int(minute), int(second), int(millisecond)*1000)
-                action = rest.split(':')[3]
-                ip_addr = rest.split(':')[2].split('=')[1]
+                dt = datetime(int(year), month, int(day), int(hour),
+                              int(minute), int(second))
             except:
                 raise ValueError
 
-            self.year = int(year)
-            self.month = int(month)
-            self.day = int(day)
             self.dt = dt
-            self.level = level
-            self.klass = klass
-            self.line = line
-            self.rest = rest
-            self.action = action
+            self.year = int(year)
+            self.month = month
             self.ip_addr = ip_addr
+            self.bitstream_id = bitstream_id
         else:
             raise ValueError
 
-    def is_download_action(self):
-        return self.action == 'view_bitstream'
-
     def get_bitstream_id(self):
-        return int(self.rest.split(':')[4].split('=')[1])
+        return self.bitstream_id
 
     def get_time(self):
         return self.year * 100 + self.month
@@ -85,7 +73,7 @@ class LeafNode:
         self.n_bytes = 0
 
     def inc_counter(self, time):
-        if self.counter.has_key(time):
+        if time in self.counter:
             self.counter[time] += 1
         else:
             self.counter[time] = 1
@@ -94,7 +82,7 @@ class LeafNode:
             self.parent.inc_counter(time)
 
     def get_counter(self, time):
-        if self.counter.has_key(time):
+        if time in self.counter:
             return self.counter[time]
         else:
             return 0
@@ -164,7 +152,7 @@ def read_item2bitstream(cursor):
         retval[bitstream_id] = item_id
     return retval
 
-def create_objects(cursor, new_db_format, existing_bitstreams):
+def create_objects(cursor, existing_bitstreams):
     """Checks the database to see what communities, collections, items, and
     bitstreams we have there and constructs corresponding objects (and put
     them into trees...)
@@ -183,7 +171,7 @@ def create_objects(cursor, new_db_format, existing_bitstreams):
     COLLECTION = 3
     COMMUNITY = 4
     handles = {ITEM: {}, COLLECTION: {}, COMMUNITY: {}}
-    cursor.execute("SELECT handle, resource_type_id, resource_id FROM handle")
+    cursor.execute("SELECT handle, resource_type_id, resource_id FROM handle WHERE resource_type_id < 5")
     for handle, resource_type_id, resource_id in cursor.fetchall():
         handles[resource_type_id][resource_id] = handle
 
@@ -200,15 +188,10 @@ def create_objects(cursor, new_db_format, existing_bitstreams):
     # Create objects...
 
     h = handles[COMMUNITY]
-    if new_db_format:
-        s = ("SELECT community.community_id, metadatavalue.text_value " +
-             "FROM community, metadatavalue " +
-             "WHERE community.community_id = metadatavalue.resource_id " +
-             "AND metadatavalue.resource_type_id = 4 " +
-             "AND metadatavalue.metadata_field_id = %d " % metadata_field_id)
-    else:
-        s = "SELECT community_id, name from community"
-    cursor.execute(s)
+    cursor.execute("SELECT community.uuid, metadatavalue.text_value " +
+                   "FROM community, metadatavalue " +
+                   "WHERE community.uuid = metadatavalue.dspace_object_id " +
+                   "AND metadatavalue.metadata_field_id = %d " % metadata_field_id)
     for community_id, name in cursor.fetchall():
         communities[community_id] = Community(community_id, name,
                                               h[community_id])
@@ -216,46 +199,31 @@ def create_objects(cursor, new_db_format, existing_bitstreams):
     # Let's create a 'virtual' root community because this makes it easier:
     # a) to handle a tree than a forest
     # b) to create statistics for whole DSpace.
-    communities[0] = Community(0, 'The entire DSpace')
+    communities[0] = Community('00000000-0000-0000-0000-000000000000', 'The entire DSpace')
 
     h = handles[COLLECTION]
-    if new_db_format:
-        s = ("SELECT collection.collection_id, metadatavalue.text_value " +
-             "FROM collection, metadatavalue " +
-             "WHERE collection.collection_id = metadatavalue.resource_id " +
-             "AND metadatavalue.resource_type_id = 3 " +
-             "AND metadatavalue.metadata_field_id = %d " % metadata_field_id)
-    else:
-        s = "SELECT collection_id, name from collection"
-    cursor.execute(s)
+    cursor.execute("SELECT collection.uuid, metadatavalue.text_value " +
+                   "FROM collection, metadatavalue " +
+                   "WHERE collection.uuid = metadatavalue.dspace_object_id " +
+                   "AND metadatavalue.metadata_field_id = %d " % metadata_field_id)
     for collection_id, name in cursor.fetchall():
         collections[collection_id] = Collection(collection_id, name,
                                                 h[collection_id])
 
     h = handles[ITEM]
-    if new_db_format:
-        s = ("SELECT item.item_id, metadatavalue.text_value " +
-             "FROM item, metadatavalue " +
-             "WHERE item.item_id = metadatavalue.resource_id " +
-             "AND metadatavalue.resource_type_id = 2 " +
-             "AND metadatavalue.metadata_field_id = %d " % metadata_field_id +
-             "AND item.in_archive = TRUE ")
-    else: # TODO: Do we need this?
-        s = ("SELECT item.item_id, dcvalue.text_value " +
-             "FROM item, dcvalue " +
-             "WHERE item.item_id = dcvalue.item_id " +
-             "AND dcvalue.dc_type_id = 64 " %
-             "AND item.in_archive = TRUE ")
-    cursor.execute(s)
+    cursor.execute("SELECT item.uuid, metadatavalue.text_value " +
+                   "FROM item, metadatavalue " +
+                   "WHERE item.uuid = metadatavalue.dspace_object_id " +
+                   "AND metadatavalue.metadata_field_id = %d " % metadata_field_id +
+                   "AND item.in_archive = TRUE ")
     for item_id, name in cursor.fetchall():
         items[item_id] = Item(item_id, name, h[item_id])
 
     for bitstream_id in existing_bitstreams.keys():
         bitstreams[bitstream_id] = Bitstream(bitstream_id)
-    cursor.execute("SELECT bitstream_id FROM bitstream")
+    cursor.execute("SELECT uuid FROM bitstream")
     for bitstream_id in [row[0] for row in cursor.fetchall()]:
         bitstreams[bitstream_id] = Bitstream(bitstream_id)
-
 
     # ... and put them into hierarchy (i.e. trees).
 
@@ -266,7 +234,7 @@ def create_objects(cursor, new_db_format, existing_bitstreams):
 
     root = communities[0]
     for community in communities.values():
-        if community.parent == None and community.my_id != 0:
+        if community.parent == None and community.my_id != '00000000-0000-0000-0000-000000000000':
             root.add_child(community)
 
     cursor.execute("SELECT community_id, collection_id " +
@@ -281,26 +249,26 @@ def create_objects(cursor, new_db_format, existing_bitstreams):
         try:
             item = items[item_id]
         except KeyError:
-            print "(collection2item) Bad item_id: %s" % item_id
+            print("(collection2item) Bad item_id: %s" % item_id)
             continue
         
         collection.add_child(item)
 
     # Note that we don't care about bundles so unlike the database
-    # each of our Bitsream object has an Item object as a parent:
+    # each of our Bitstream object has an Item object as a parent:
     cursor.execute("SELECT " +
                    "item2bundle.item_id, " +
                    "bundle2bitstream.bitstream_id, " +
                    "bitstream.size_bytes " +
                    "FROM item2bundle, bundle2bitstream, bitstream " +
                    "WHERE item2bundle.bundle_id = bundle2bitstream.bundle_id "
-                   "AND bundle2bitstream.bitstream_id = bitstream.bitstream_id"
+                   "AND bundle2bitstream.bitstream_id = bitstream.uuid"
                    )
     for item_id, bitstream_id, size_bytes in cursor.fetchall():
         try:
             item = items[item_id]
         except KeyError:
-            print "(item2bundle) Bad item_id: %s" % item_id
+            print("(item2bundle) Bad item_id: %s" % item_id)
             continue
             
         bitstream = bitstreams[bitstream_id]
@@ -311,7 +279,7 @@ def create_objects(cursor, new_db_format, existing_bitstreams):
         try:
             item = items[item_id]
         except KeyError:
-            print "(item2bundle) Bad item_id: %s" % item_id
+            print("(item2bundle) Bad item_id: %s" % item_id)
             continue
 
         if bitstream_id not in [x.my_id for x in item.children]:
@@ -320,15 +288,10 @@ def create_objects(cursor, new_db_format, existing_bitstreams):
             item.add_child(bitstream)
 
     bundle_types = {}
-    if new_db_format:
-        s = ("SELECT bundle_id, metadatavalue.text_value " +
-             "FROM bundle, metadatavalue " +
-             "WHERE bundle.bundle_id = metadatavalue.resource_id " +
-             "AND metadatavalue.resource_type_id = 1 " +
-             "AND metadatavalue.metadata_field_id = %d " % metadata_field_id)
-    else:
-        s = "SELECT bundle_id, name FROM bundle"
-    cursor.execute(s)
+    cursor.execute("SELECT bundle.uuid, metadatavalue.text_value " +
+                   "FROM bundle, metadatavalue " +
+                   "WHERE bundle.uuid = metadatavalue.dspace_object_id " +
+                   "AND metadatavalue.metadata_field_id = %d " % metadata_field_id)
     for bundle_id, name in cursor.fetchall():
         bundle_types[bundle_id] = name
 
@@ -339,12 +302,12 @@ def create_objects(cursor, new_db_format, existing_bitstreams):
         try:
             bitstream = bitstreams[bitstream_id]
         except KeyError:
-            print "(bundle2bitstream) Bad bitstream_id: %s" % bitstream_id
+            print("(bundle2bitstream) Bad bitstream_id: %s" % bitstream_id)
             continue
         try:
             bundle_type = bundle_types[bundle_id]
         except KeyError:
-            print "(bundle2bitstream) Bad bundle_id: %s" % bundle_id
+            print("(bundle2bitstream) Bad bundle_id: %s" % bundle_id)
             continue
         bitstream.bundle_name = bundle_type
 
@@ -369,35 +332,21 @@ def create_objects(cursor, new_db_format, existing_bitstreams):
     
 
 def read_ip_exclude_file(ip_exclude_file):
+    with open(ip_exclude_file, 'r') as f:
+        return frozenset(map(ip_network,
+                             filter(lambda line: line != '' and line[0] != '#',
+                                    [x[:-1] for x in f.readlines()])))
 
-    f = open(ip_exclude_file, 'r')
-
-    ips = filter(lambda line: re.match('^[\d\.]+$', line),
-                 [x.strip('. \n') for x in f.readlines()])
-
-    f.close()
-
-    # Let's divide ip addresses to four sets. This makes things faster when
-    # we want test if a log line belongs to an excluded ip address (or address
-    # range).
-
-    ips_to_exclude = [[], [], [], []] # Three first will contain address ranges
-    #                                   and the last one normal ip addresses.
-    for ip in ips:
-        ips_to_exclude[ip.count('.')].append(ip)
-
-    return [frozenset(ips_to_exclude[x]) for x in range(4)]
-
-def count_downloads_from_logs(ip_exclude_file, log_dir, bitstreams,
+def count_downloads_from_logs(ip_exclude_file, log_files, bitstreams,
                               trust_mtime=False,
                               start_time=None, stop_time=None):
 
-    ips_to_exclude = read_ip_exclude_file(ip_exclude_file)
+    ips_networks_to_exclude = read_ip_exclude_file(ip_exclude_file)
     pattern = re.compile('ip_addr=(.*?):')
     downloads = set()
     last_download = {}
     
-    for filename in glob.glob(os.path.join(log_dir, 'dspace.log*')):
+    for filename in glob.glob(log_files):
 
         if trust_mtime:
             # If we trust modification time of the log files (and why not?),
@@ -406,13 +355,13 @@ def count_downloads_from_logs(ip_exclude_file, log_dir, bitstreams,
             mtime = date.fromtimestamp(os.stat(filename)[ST_MTIME])
             mtime = mtime.year * 100 + mtime.month
             if start_time and mtime < start_time:
-                print 'Skipped %s. (Too old for us!)' % filename
+                print('Skipped %s. (Too old for us!)' % filename)
                 continue
         
         with open(filename, 'r') as infile:
 
+            print(filename)
             for line in infile:
-
                 try:
                     log_line = LogLine(line)
                 except ValueError:
@@ -424,56 +373,48 @@ def count_downloads_from_logs(ip_exclude_file, log_dir, bitstreams,
                 if stop_time and log_line.get_time() > stop_time:
                     break # Skip the whole file.
 
-                # Skip log lines that have an excluded ip address. (The ip address
-                # might be a whole range of addresses expressed as, for example
-                # 204.123.9 or even 204.123 or 204 (althought two later cases
-                # won't probably happen in practice...))
-                m = pattern.search(line)
+                ip_addr = ip_address(log_line.ip_addr)
                 exclude_this_line = False
-                if m:
-                    ip_parts = m.group(1).split('.')
-                    for i in range(4):
-                        if '.'.join([str(x) for x in ip_parts[0:i+1]]) in \
-                               ips_to_exclude[i]:
-                            exclude_this_line = True
-                            break
+                for network in ips_networks_to_exclude:
+                    if ip_addr in network:
+                        exclude_this_line = True
+                        break
+                if exclude_this_line == True:
+                    continue # Skip this line
+
+                try:
+                    bitstream_id = log_line.get_bitstream_id()
+                except ValueError:
+                    print("Bad bitstream_id")
+                    continue
+
+                try:
+                    bitstream = bitstreams[bitstream_id]
+                except KeyError:
+                    continue
+                if not bitstream.is_original_bitstream():
+                    continue
+
+                exclude_this_line = False
+                if log_line.ip_addr in last_download:
+                    delta = log_line.dt - last_download[log_line.ip_addr]
+                    if delta < timedelta(seconds=1):
+                        exclude_this_line = True
+                last_download[log_line.ip_addr] = log_line.dt
                 if exclude_this_line:
-                    continue # Skip this line.
+                    continue
 
-                if log_line.is_download_action():
-                    try:
-                        bitstream_id = log_line.get_bitstream_id()
-                    except ValueError:
-                        print "Bad bitstream_id"
-                        continue
-
-                    try:
-                        bitstream = bitstreams[bitstream_id]
-                    except KeyError:
-                        continue
-                    if not bitstream.is_original_bitstream():
-                        continue
-
-                    exclude_this_line = False
-                    if last_download.has_key(log_line.ip_addr):
-                        delta = log_line.dt - last_download[log_line.ip_addr]
-                        if delta < timedelta(seconds=1):
-                            exclude_this_line = True
-                    last_download[log_line.ip_addr] = log_line.dt
-                    if exclude_this_line:
-                        continue
-
-                    log_line_time = log_line.get_time()
-                    t = log_line.ip_addr, log_line_time, bitstream_id
-                    if t not in downloads:
-                        # For each bitstream, we count at most one
-                        # download per ip per month.
-                        bitstreams[bitstream_id].inc_counter(log_line_time)
-                        downloads.add(t)
+                log_line_time = log_line.get_time()
+                t = log_line.ip_addr, log_line_time, bitstream_id
+                if t not in downloads:
+                    # For each bitstream, we count at most one
+                    # download per ip per month.
+                    bitstreams[bitstream_id].inc_counter(log_line_time)
+                    downloads.add(t)
 
 def generate_time_tuple(start_time, stop_time):
     time_list = []
-    year = start_time / 100
+    year = start_time // 100
     month = start_time % 100
 
     while year*100 + month <= stop_time:
@@ -492,13 +433,12 @@ def update_download_table(cursor, table_name, id_column_name, nodes, time):
     existing_triples = frozenset([tuple(x) for x in rows])
     existing_pairs = frozenset([(x[0], x[1]) for x in rows])
 
-    insert_string = ("INSERT INTO %s (%s) VALUES (%%s, %s, %%s)" %
+    insert_string = ("INSERT INTO %s (%s) VALUES ('%%s', %s, %%s)" %
                      (table_name, names, time))
 
     update_string = ("UPDATE %s SET count = %%s " +
-                     "WHERE %s = %%s AND time = %s") % (table_name,
-                                                        id_column_name, time)
-
+                     "WHERE %s = '%%s' AND time = %s") % (table_name,
+                                                          id_column_name, time)
     for node in nodes:
         count = node.get_counter(time)
         if (node.my_id, time) not in existing_pairs:
@@ -547,13 +487,13 @@ def update_parent_child_table(cursor, table_name,
     existing_pairs = frozenset([tuple(row) for row in rows])
     existing_child_ids = frozenset([row[1] for row in rows])
 
-    insert_string = ("INSERT INTO %s (%s, %s) VALUES (%%s, %%s)" %
+    insert_string = ("INSERT INTO %s (%s, %s) VALUES ('%%s', '%%s')" %
                      (table_name, parent_column_name, child_column_name))
 
-    update_string = ("UPDATE %s SET %s = %%s WHERE %s = %%s" %
+    update_string = ("UPDATE %s SET %s = '%%s' WHERE %s = '%%s'" %
                      (table_name, parent_column_name, child_column_name))
 
-    for child in filter(lambda(x): x.parent != None, children):
+    for child in filter(lambda x: x.parent != None, children):
         parent_id = child.parent.my_id
         child_id = child.my_id
         if child_id not in existing_child_ids:
@@ -568,7 +508,7 @@ def update_parent_child_table(cursor, table_name,
 
 def update_community2community_table(cursor, community):
 
-    for child in filter(lambda(x): isinstance(x, Community),
+    for child in filter(lambda x: isinstance(x, Community),
                         community.children):
         update_community2community_table(cursor, child)
         
@@ -577,16 +517,16 @@ def update_community2community_table(cursor, community):
         child_id = community.my_id
 
         cursor.execute("SELECT parent_comm_id FROM " +
-                       "community2community WHERE child_comm_id = %s" %
+                       "community2community WHERE child_comm_id ='%s'" %
                        community.my_id)
         row = cursor.fetchone()
         if not row:
             cursor.execute("INSERT INTO community2community " +
                            "(parent_comm_id, child_comm_id) VALUES " +
-                           "(%s, %s)" % (parent_id, child_id))
+                           "('%s', '%s')" % (parent_id, child_id))
         elif row[0] != parent_id:
             cursor.execute("UPDATE community2community SET " +
-                           "parent_comm_id = %s " % parent_id +
+                           "parent_comm_id = '%s' " % parent_id +
                            "WHERE child_comm_id = %s" % child_id)
         else:
             pass
@@ -615,57 +555,57 @@ def write_stats(cursor, communities, collections, items, bitstreams,
     WARNING: tested how well this handles removes and deletes.
     """
 
-    print "Writing communities..."
+    print("Writing communities...")
     update_id_name_handle_etc_table(cursor, 'community', 'community_id',
                                     communities.values())
 
-    print "Writing collections..."
+    print("Writing collections...")
     update_id_name_handle_etc_table(cursor, 'collection', 'collection_id',
                                     collections.values())
 
-    print "Writing items..."
+    print("Writing items...")
     update_id_name_handle_etc_table(cursor, 'item', 'item_id', items.values())
         
     # Hierarchy (relationships):
 
-    print "Writing community2community..."
+    print("Writing community2community...")
     update_community2community_table(cursor, communities[0])
 
-    print "Writing community2collection..."
+    print("Writing community2collection...")
     update_parent_child_table(cursor, 'community2collection', 'community_id',
                               'collection_id', collections.values())
     
-    print "Writing collection2item..."
+    print("Writing collection2item...")
     update_parent_child_table(cursor, 'collection2item', 'collection_id',
                               'item_id', items.values())
 
-    print "Writing item2bitstream..."
+    print("Writing item2bitstream...")
     update_parent_child_table(cursor, 'item2bitstream', 'item_id',
                               'bitstream_id', bitstreams.values())
 
     # And finally the actual download numbers:
         
-    print "Writing actual download statistics..."
+    print("Writing actual download statistics...")
     for time in generate_time_tuple(start_time, stop_time):
 
-        print "Month " + str(time) + " ..."
+        print("Month " + str(time) + " ...")
 
-        print "Writing downloadspercommunity..."
+        print("Writing downloadspercommunity...")
         update_download_table(cursor, 'downloadspercommunity', 'community_id',
                               communities.values(), time)
 
-        print "Writing downloadspercollection..."
+        print("Writing downloadspercollection...")
         update_download_table(cursor, 'downloadspercollection',
                               'collection_id', collections.values(), time)
 
-        print "Writing downloadsperitem..."
+        print("Writing downloadsperitem...")
         update_download_table(cursor, 'downloadsperitem', 'item_id',
                               items.values(), time)
 
 
 def connect_to_db(db):
-    return pgdb.connect(host = db['host'], database = db['database'],
-                        user = db['user'], password = db['password'])
+    return psycopg2.connect(host = db['host'], database = db['database'],
+                            user = db['user'], password = db['password'])
 
 def main(argv=None):
 
@@ -673,14 +613,8 @@ def main(argv=None):
         argv = sys.argv
 
     try:
-        if argv[1] == "--old":
-            new_db_format = False
-        elif argv[1] == "--new":
-            new_db_format = True
-        else:
-            raise ValueError
-        start_time = int(argv[2])
-        stop_time = int(argv[3])
+        start_time = int(argv[1])
+        stop_time = int(argv[2])
         # Some sanity checks for input... we don't believe that anyone has
         # logs dated before year 1900.
         if (start_time % 100 not in range(1,13) or start_time / 100 < 1900 or
@@ -688,45 +622,39 @@ def main(argv=None):
             start_time > stop_time):
             raise ValueError
     except:
-        msg = """Usage: %s --old start_time stop_time
-                  or  : %s --new start_time stop_time
+        msg = """Usage: %s start_time stop_time
 
 Gather monthly statistics between start_time and stop_time (including those
 months). The month numbers must be prefixed by year. For example, to gather
 statistics between April 2007 and December 2008:
 
-%s --old 200704 200812
+%s 200704 200812
 
-  -- old   Old DSpace database format (DSpace 3.x)
-  -- new   New DSpace database format (DSpace 5.x)
-
-""" % (argv[0], argv[0], argv[0])
-        print >>sys.stderr, msg
+""" % (argv[0], argv[0])
+        print(msg, file=sys.stderr)
         return 1
 
     input_db = config['input_db']
     output_db = config['output_db']
-    log_dir = config['log_dir']
+    log_files = config['log_files']
     ip_exclude_file = config['ip_exclude_file']
 
-    print "Reading existing item/bitstream relations from the simplestats database..."
+    print("Reading existing item/bitstream relations from the simplestats database...")
     db = connect_to_db(output_db)
     cursor = db.cursor()
     existing_bitstreams = read_item2bitstream(cursor)
     
-    print "Reading from the database..."
+    print("Reading from the database...")
     db = connect_to_db(input_db)
     cursor = db.cursor()
-    communities, collections, items, bitstreams = create_objects(cursor,
-                                                                 new_db_format,
-                                                                 existing_bitstreams)
+    communities, collections, items, bitstreams = create_objects(cursor, existing_bitstreams)
     db.close()
 
-    print "Reading log files..."
-    count_downloads_from_logs(ip_exclude_file, log_dir, bitstreams,
-                              True, start_time, stop_time)
+    print("Reading log files...")
+    count_downloads_from_logs(ip_exclude_file, log_files, bitstreams,
+                              False, start_time, stop_time)
 
-    print "Writing to the database..."
+    print("Writing to the database...")
     db = connect_to_db(output_db)
     cursor = db.cursor()
     write_stats(cursor, communities, collections, items, bitstreams, start_time, stop_time)

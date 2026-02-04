@@ -3,8 +3,8 @@ package fi.helsinki.lib.simplestatsreporter;
 import java.util.*;
 import java.io.*;
 import java.text.*;
-import javax.servlet.*;
-import javax.servlet.http.*;
+import jakarta.servlet.*;
+import jakarta.servlet.http.*;
 import java.sql.*;
 
 public class FrontPage extends SimpleStatsReporter {
@@ -62,12 +62,12 @@ public class FrontPage extends SimpleStatsReporter {
     public String htmlContent(Statement stmt, HttpServletRequest request)
 	throws SQLException {
 
-	Hashtable<Integer, Community> communities =
+	Hashtable<UUID, Community> communities =
 	    DBReader.readCommunities(stmt);
 
 	DBReader.communitiesToTrees(communities, stmt);
 
-	Node root = communities.get(0);
+	Node root = communities.get(new UUID(0,0));
 	
  	StringWriter out = new StringWriter();
 	out.write("<form action=\"all\"><fieldset><legend>Community</legend>");

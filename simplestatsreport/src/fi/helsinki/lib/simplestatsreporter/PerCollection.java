@@ -3,8 +3,8 @@ package fi.helsinki.lib.simplestatsreporter;
 import java.util.*;
 import java.io.*;
 import java.text.*;
-import javax.servlet.*;
-import javax.servlet.http.*;
+import jakarta.servlet.*;
+import jakarta.servlet.http.*;
 import java.sql.*;
 
 public class PerCollection extends SimpleStatsReporter {
@@ -68,23 +68,20 @@ public class PerCollection extends SimpleStatsReporter {
     public String htmlContent(Statement stmt, HttpServletRequest request)
 	throws SQLException {
 
-	int collectionId = Integer.parseInt(request.getParameter("id"));
+	UUID collectionId = UUID.fromString(request.getParameter("id"));
 	int startTime =
 	    Integer.parseInt(request.getParameter("start_time"));
 	int stopTime =
 	    Integer.parseInt(request.getParameter("stop_time"));
 
-	Hashtable<Integer, Community> communities =
-	    DBReader.readCommunities(stmt);
-	Hashtable<Integer, Collection> collections =
-	    DBReader.readCollections(stmt);
-	Hashtable<Integer, Item> items = DBReader.readItems(stmt);
+	Hashtable<UUID, Community> communities = DBReader.readCommunities(stmt);
+	Hashtable<UUID, Collection> collections = DBReader.readCollections(stmt);
+	Hashtable<UUID, Item> items = DBReader.readItems(stmt);
 
 	DBReader.readItemsStatsForCollection(stmt, items, collectionId,
 					     startTime, stopTime);
 
 	DBReader.setRelations(stmt, communities, collections, items);
-
 
 	return printItems(collections.get(collectionId),
 			  startTime, stopTime);

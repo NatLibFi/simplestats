@@ -1,8 +1,10 @@
 package fi.helsinki.lib.simplestatsreporter;
 
+import java.util.UUID;
+
 public class Community extends Node{
 
-    public Community(int community_id, String community_name,
+    public Community(UUID community_id, String community_name,
 		     String community_handle,
 		     int n_items, int n_bitstreams, long n_bytes) {
 	super(community_id, community_name, community_handle,

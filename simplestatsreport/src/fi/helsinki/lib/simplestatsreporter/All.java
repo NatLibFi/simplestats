@@ -4,8 +4,8 @@ import java.lang.Math.*;
 import java.util.*;
 import java.io.*;
 import java.text.*;
-import javax.servlet.*;
-import javax.servlet.http.*;
+import jakarta.servlet.*;
+import jakarta.servlet.http.*;
 import java.sql.*;
 
 public class All extends SimpleStatsReporter {
@@ -108,14 +108,12 @@ public class All extends SimpleStatsReporter {
 	    Integer.parseInt(request.getParameter("start_time"));
 	int stopTime =
 	    Integer.parseInt(request.getParameter("stop_time"));
-	int communityId =
-	    Integer.parseInt(request.getParameter("community_id"));
+	UUID communityId =
+	    UUID.fromString(request.getParameter("community_id"));
 	
-	Hashtable<Integer, Community> communities =
-	    DBReader.readCommunities(stmt);
-	Hashtable<Integer, Collection> collections =
-	    DBReader.readCollections(stmt);
-	Hashtable<Integer, Item> items = DBReader.readItems(stmt);
+	Hashtable<UUID, Community> communities = DBReader.readCommunities(stmt);
+	Hashtable<UUID, Collection> collections = DBReader.readCollections(stmt);
+	Hashtable<UUID, Item> items = DBReader.readItems(stmt);
 	
 	DBReader.readCommunitiesStats(stmt, communities, startTime, stopTime);
 	DBReader.readCollectionsStats(stmt, collections, startTime, stopTime);
