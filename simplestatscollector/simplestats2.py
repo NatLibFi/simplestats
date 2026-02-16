@@ -373,7 +373,11 @@ def count_downloads_from_logs(ip_exclude_file, log_files, bitstreams,
                 if stop_time and log_line.get_time() > stop_time:
                     break # Skip the whole file.
 
-                ip_addr = ip_address(log_line.ip_addr)
+                try:
+                    ip_addr = ip_address(log_line.ip_addr)
+                except ValueError:
+                    print("Bad ip_addr")
+                    continue
                 exclude_this_line = False
                 for network in ips_networks_to_exclude:
                     if ip_addr in network:
