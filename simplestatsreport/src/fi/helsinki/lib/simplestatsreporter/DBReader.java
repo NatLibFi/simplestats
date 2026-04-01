@@ -292,7 +292,7 @@ public class DBReader {
 	ResultSet rs;
 	String q = ("SELECT * FROM " + 
 		    "downloadsper" + ob + " WHERE " +
-		    ob + "_id = " + obId.toString());
+		    ob + "_id = '" + obId.toString() + "'");
 	
 	rs = stmt.executeQuery(q);
 	while (rs.next()) {
